@@ -1,80 +1,82 @@
+# app.py
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from sklearn.ensemble import RandomForestClassifier
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
 
-# ---------------------------
-# 1️⃣ Load EEG CSV
-# ---------------------------
-DATA_PATH = "EEG_Eye_State_Classification.csv"  # CSV already in repo
-df = pd.read_csv(DATA_PATH)
+st.set_page_config(page_title="EEG Cognitive Load Dashboard", layout="wide")
+st.title("EEG Cognitive Load Dashboard")
 
-# ---------------------------
-# 2️⃣ Feature Extraction & Cognitive Load Classification
-# ---------------------------
-# Use all EEG channels except 'eyeDetection'
-X_features = df.drop(columns=["eyeDetection"])
-df["EEG_mean"] = X_features.mean(axis=1)
+# --- Step 1: Load CSV from GitHub repo ---
+csv_file = "EEG_Eye_State_Classification.csv"  # replace with your GitHub raw file link if needed
+df = pd.read_csv(csv_file)
 
-# Define thresholds for Low / Medium / High
-low_thr = df["EEG_mean"].quantile(0.33)
-high_thr = df["EEG_mean"].quantile(0.66)
+st.write("### Raw EEG Data")
+st.dataframe(df.head())
 
-def classify_load(val):
-    if val <= low_thr:
-        return "Low"
-    elif val <= high_thr:
-        return "Medium"
-    else:
-        return "High"
+# --- Step 2: Compute a simple cognitive load score ---
+# Example: average of all numeric columns (replace with actual EEG metrics)
+numeric_cols = df.select_dtypes(include=np.number).columns
+df['EEG_Score'] = df[numeric_cols].mean(axis=1)
+avg_score = df['EEG_Score'].mean()
 
-df["Load_Level"] = df["EEG_mean"].apply(classify_load)
-
-# ---------------------------
-# 3️⃣ Train Random Forest Model
-# ---------------------------
-y = df["Load_Level"]
-clf = RandomForestClassifier(n_estimators=100, random_state=42)
-clf.fit(X_features, y)
-
-# ---------------------------
-# 4️⃣ Predict Current Load (last row)
-# ---------------------------
-current_features = X_features.iloc[-1]  # simulate "current" EEG
-pred_load = clf.predict([current_features])[0]
-
-# ---------------------------
-# 5️⃣ Streamlit Dashboard
-# ---------------------------
-st.set_page_config(page_title="Cognitive Load Dashboard", layout="wide")
-st.title("🧠 Cognitive Load-Aware Dashboard")
-st.sidebar.write(f"### Current Cognitive Load: {pred_load}")
-
-# ---------------------------
-# 6️⃣ Adaptive Visualization
-# ---------------------------
-if pred_load == "Low":
-    st.subheader("📊 Detailed Dashboard (Low Load)")
-    st.plotly_chart(px.line(df, y="EEG_mean", title="EEG Mean Activity"))
-    st.plotly_chart(px.histogram(df, x="EEG_mean", title="Distribution of EEG"))
-    # Scatter using first two EEG channels for simplicity
-    first_two_cols = X_features.columns[:2]
-    st.plotly_chart(px.scatter(df, x=first_two_cols[0], y=first_two_cols[1],
-                                color="Load_Level", title=f"{first_two_cols[0]} vs {first_two_cols[1]}"))
-
-elif pred_load == "Medium":
-    st.subheader("📈 Moderate Dashboard (Medium Load)")
-    st.plotly_chart(px.line(df, y="EEG_mean", title="EEG Mean Activity"))
-    st.plotly_chart(px.box(df, y="EEG_mean", title="EEG Activity Summary"))
-
+# Determine cognitive load level
+if avg_score < 30:
+    load_level = 'Low'
+elif avg_score < 70:
+    load_level = 'Medium'
 else:
-    st.subheader("✅ Simplified Dashboard (High Load)")
-    st.metric("Average EEG", round(df["EEG_mean"].mean(), 2))
-    st.metric("High Load Samples", (df["Load_Level"]=="High").sum())
+    load_level = 'High'
 
-# ---------------------------
-# 7️⃣ Optional: Show full EEG data table
-# ---------------------------
-with st.expander("Show Raw EEG Data"):
-    st.dataframe(df)
+st.write(f"### Estimated Cognitive Load: **{load_level}**")
+
+# --- Step 3: Visualizations based on load ---
+st.write("### Visualizations")
+
+# --- Low Load: Basic line plots ---
+if load_level == 'Low':
+    st.write("#### Basic EEG Line Plot")
+    for col in numeric_cols:
+        st.line_chart(df[col])
+
+# --- Medium Load: Line + Histogram + Scatter ---
+elif load_level == 'Medium':
+    st.write("#### EEG Line Plots")
+    for col in numeric_cols:
+        st.line_chart(df[col])
+
+    st.write("#### Histograms")
+    for col in numeric_cols:
+        fig, ax = plt.subplots()
+        sns.histplot(df[col], kde=True, ax=ax)
+        st.pyplot(fig)
+
+    st.write("#### Scatter Plot Example")
+    if len(numeric_cols) >= 2:
+        fig, ax = plt.subplots()
+        sns.scatterplot(x=df[numeric_cols[0]], y=df[numeric_cols[1]], ax=ax)
+        st.pyplot(fig)
+
+# --- High Load: Full Analysis ---
+else:
+    st.write("#### EEG Line Plots")
+    for col in numeric_cols:
+        st.line_chart(df[col])
+    
+    st.write("#### Histograms")
+    for col in numeric_cols:
+        fig, ax = plt.subplots()
+        sns.histplot(df[col], kde=True, ax=ax)
+        st.pyplot(fig)
+
+    st.write("#### Scatter Plot Matrix")
+    fig = sns.pairplot(df[numeric_cols])
+    st.pyplot(fig)
+
+    st.write("#### Correlation Heatmap")
+    corr = df[numeric_cols].corr()
+    fig, ax = plt.subplots(figsize=(8,6))
+    sns.heatmap(corr, annot=True, cmap='coolwarm', ax=ax)
+    st.pyplot(fig)
 
